@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
+import { RateLimiterRedis, type RateLimiterRes } from 'rate-limiter-flexible';
 import { TooManyRequestsException } from '../exceptions/custom-exceptions';
 import { CacheService } from 'src/core/cache/cache.service';
 
