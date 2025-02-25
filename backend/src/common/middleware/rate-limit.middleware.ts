@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { RateLimiterRedis, type RateLimiterRes } from 'rate-limiter-flexible';
+import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { TooManyRequestsException } from '../exceptions/custom-exceptions';
 import { CacheService } from 'src/core/cache/cache.service';
 
@@ -25,7 +25,7 @@ export class RateLimitMiddleware implements NestMiddleware {
     try {
       const key = req.params.walletAddress ? `${req.ip}-${req.params.walletAddress}` : req.ip;
 
-      (await this.rateLimiter.consume(key || '')) as RateLimiterRes;
+      await this.rateLimiter.consume(key || '');
       next();
     } catch {
       res.header('Retry-After', '60');
