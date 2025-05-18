@@ -6,6 +6,7 @@ export class CacheService {
   private readonly redis: Redis;
 
   constructor() {
+    console.log('Redis client initialized with ', process.env.REDIS_PUBLIC_URL);
     this.redis = new Redis(process.env.REDIS_PUBLIC_URL || '');
   }
 
