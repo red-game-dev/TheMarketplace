@@ -37,10 +37,6 @@ export const TransferModal = memo(function TransferModal({
   const transferStatus = useAppStore().use.transferStatus();
   const transferStatusType = useAppStore().use.transferStatusType();
   const { resetTransfer } = useAppStore().getState();
-  const { handleTransfer } = useNftTransfer(nft, recipientAddress, () => {
-    setShowTransactionStatus(true);
-    onTransferComplete();
-  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -49,7 +45,12 @@ export const TransferModal = memo(function TransferModal({
       setRecipientAddress('');
       setShowTransactionStatus(false);
     }
-  }, [isOpen, resetTransfer]);
+  }, [isOpen]);
+
+  const { handleTransfer } = useNftTransfer(nft, recipientAddress, () => {
+    setShowTransactionStatus(true);
+    onTransferComplete();
+  });
 
   const validateUsername = useCallback(
     debounce(async (username: string) => {
