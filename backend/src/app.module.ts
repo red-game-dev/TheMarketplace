@@ -19,7 +19,7 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
         NODE_ENV: Joi.string()
           .valid('development', 'production', 'test', 'provision')
           .default('development'),
-        PORT: Joi.number().port().default(3000),
+        PORT: Joi.number().port().default(4000),
       }),
     }),
     SupabaseModule,

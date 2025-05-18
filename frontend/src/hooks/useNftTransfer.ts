@@ -9,7 +9,8 @@ import { useTransferNFT } from '@/services/api/nft/hooks';
 export function useNftTransfer(nft: NFT, recipientAddress: string, onTransferComplete: () => void) {
   const { toast } = useToast();
   const { transfer, updateStatus } = useTransferNFT();
-  const { setTransferStatus, setActiveTransfer, setTransferring } = useAppStore().getState();
+  const { setTransferStatus, setActiveTransfer, setTransferring, resetTransfer } =
+    useAppStore().getState();
   const activeTransfer = useAppStore().use.activeTransfer();
 
   const waitForTransaction = useCallback(async (web3: Web3, txHash: string): Promise<void> => {
@@ -138,22 +139,26 @@ export function useNftTransfer(nft: NFT, recipientAddress: string, onTransferCom
           );
           setTransferStatus('Unable to transfer', 'error');
         }
+        resetTransfer();
       } finally {
         setTransferring(false);
       }
     },
     [
-      toast,
-      transfer,
-      updateStatus,
-      nft,
       recipientAddress,
-      waitForTransaction,
-      setTransferStatus,
-      setActiveTransfer,
       setTransferring,
+      toast,
+      nft.tokenType,
+      nft.contractAddress,
+      nft.tokenId,
+      transfer,
+      setActiveTransfer,
+      setTransferStatus,
+      waitForTransaction,
+      updateStatus,
       onTransferComplete,
       activeTransfer,
+      resetTransfer,
     ],
   );
 
