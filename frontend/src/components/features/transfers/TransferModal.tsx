@@ -4,64 +4,13 @@ import { useState, useEffect, useCallback, memo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { useToast } from '@/hooks/useToast';
 import { Loader2 } from 'lucide-react';
-import Web3 from 'web3';
 import { TransactionStatus } from '@/components/features/transfers/TransactionStatus';
 import { useAppStore } from '@/store';
 import { useWallet } from '@/providers/WalletProvider';
 import { NFT } from '@/types/nft';
 import { getUserProfileByUsername } from '@/services/api/userProfile';
-import { useTransferNFT } from '@/services/api/nft/hooks';
 import { debounce } from '@/utils/performance/debounce';
-
-const ERC721_ABI = [
-  {
-    inputs: [
-      { name: 'from', type: 'address' },
-      { name: 'to', type: 'address' },
-      { name: 'tokenId', type: 'uint256' },
-    ],
-    name: 'transferFrom',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { name: 'operator', type: 'address' },
-      { name: 'approved', type: 'bool' },
-    ],
-    name: 'setApprovalForAll',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-];
-
-const ERC1155_ABI = [
-  {
-    inputs: [
-      { name: 'from', type: 'address' },
-      { name: 'to', type: 'address' },
-      { name: 'id', type: 'uint256' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'data', type: 'bytes' },
-    ],
-    name: 'safeTransferFrom',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { name: 'operator', type: 'address' },
-      { name: 'approved', type: 'bool' },
-    ],
-    name: 'setApprovalForAll',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-];
+import { useNftTransfer } from '@/hooks/useNftTransfer';
 
 interface TransferModalProps {
   nft: NFT;
@@ -78,7 +27,6 @@ export const TransferModal = memo(function TransferModal({
 }: TransferModalProps) {
   const { address } = useWallet();
   const { toast } = useToast();
-  const { transfer, updateStatus } = useTransferNFT();
   const [recipientUsername, setRecipientUsername] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -88,8 +36,11 @@ export const TransferModal = memo(function TransferModal({
   const isTransferring = useAppStore().use.isTransferring();
   const transferStatus = useAppStore().use.transferStatus();
   const transferStatusType = useAppStore().use.transferStatusType();
-  const { setTransferStatus, resetTransfer, setActiveTransfer, setTransferring } =
-    useAppStore().getState();
+  const { resetTransfer } = useAppStore().getState();
+  const { handleTransfer } = useNftTransfer(nft, recipientAddress, () => {
+    setShowTransactionStatus(true);
+    onTransferComplete();
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -136,163 +87,6 @@ export const TransferModal = memo(function TransferModal({
   useEffect(() => {
     validateUsername(recipientUsername);
   }, [recipientUsername, validateUsername]);
-
-  const waitForTransaction = useCallback(async (web3: Web3, txHash: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const checkReceipt = async () => {
-        try {
-          const receipt = await web3.eth.getTransactionReceipt(txHash);
-          if (receipt) {
-            if (receipt.status) {
-              resolve();
-            } else {
-              reject(new Error('Transaction failed'));
-            }
-          } else {
-            setTimeout(checkReceipt, 2000);
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message.includes('Transaction not found')) {
-            setTimeout(checkReceipt, 2000);
-          } else {
-            reject(error);
-          }
-        }
-      };
-      checkReceipt();
-    });
-  }, []);
-
-  const handleTransfer = useCallback(async () => {
-    if (!window.ethereum || !address || !recipientAddress) {
-      toast({
-        title: 'Error',
-        description: 'Please connect your wallet and enter a valid recipient',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setTransferring(true);
-
-    try {
-      const web3 = new Web3(window.ethereum);
-      const abi = nft.tokenType === 'ERC721' ? ERC721_ABI : ERC1155_ABI;
-      const contract = new web3.eth.Contract(abi, nft.contractAddress);
-
-      const response = await transfer(
-        {
-          walletAddress: address,
-        },
-        {
-          recipient: recipientAddress,
-          contractAddress: nft.contractAddress,
-          tokenId: nft.tokenId,
-          tokenType: nft.tokenType,
-        },
-      );
-
-      const transferId = response.id;
-
-      setActiveTransfer({
-        id: transferId,
-        fromAddress: address,
-        toAddress: recipientAddress,
-        contractAddress: nft.contractAddress,
-        tokenId: nft.tokenId,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      setTransferStatus('Requesting approval...', 'warning');
-      const approvalTx = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: address,
-            to: nft.contractAddress,
-            data: contract.methods.setApprovalForAll(nft.contractAddress, true).encodeABI(),
-          },
-        ],
-      });
-
-      setTransferStatus('Waiting for approval confirmation...', 'warning');
-      await waitForTransaction(web3, approvalTx);
-
-      setTransferStatus('Transferring NFT...', 'success');
-      const transferData =
-        nft.tokenType === 'ERC721'
-          ? contract.methods.transferFrom(address, recipientAddress, nft.tokenId).encodeABI()
-          : contract.methods
-              .safeTransferFrom(address, recipientAddress, nft.tokenId, 1, '0x')
-              .encodeABI();
-
-      const transferTx = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: address,
-            to: nft.contractAddress,
-            data: transferData,
-          },
-        ],
-      });
-
-      setTransferStatus('Waiting for transfer confirmation...', 'warning');
-      await waitForTransaction(web3, transferTx);
-
-      await updateStatus(
-        { id: transferId },
-        {
-          status: 'completed',
-          txHash: transferTx,
-        },
-      );
-
-      setShowTransactionStatus(true);
-      onTransferComplete();
-    } catch (error) {
-      console.error('Transfer error:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to transfer NFT',
-        variant: 'destructive',
-        duration: 5000,
-      });
-
-      if (activeTransfer?.id) {
-        try {
-          await updateStatus(
-            { id: activeTransfer.id },
-            {
-              status: 'failed',
-              error: error instanceof Error ? error.message : 'Unknown error occurred',
-            },
-          );
-
-          setTransferStatus('Unable to transfer', 'error');
-        } catch (updateError) {
-          console.error('Failed to update transfer status:', updateError);
-        }
-      }
-    } finally {
-      setTransferring(false);
-    }
-  }, [
-    address,
-    nft,
-    recipientAddress,
-    toast,
-    transfer,
-    updateStatus,
-    setActiveTransfer,
-    setTransferStatus,
-    setTransferring,
-    waitForTransaction,
-    activeTransfer,
-    onTransferComplete,
-  ]);
 
   return (
     <>
@@ -348,7 +142,21 @@ export const TransferModal = memo(function TransferModal({
                 Cancel
               </button>
               <button
-                onClick={handleTransfer}
+                onClick={() => {
+                  if (!address) {
+                    console.error('Error checking if address is available:', address);
+                    toast({
+                      title: 'Walet not connected',
+                      description:
+                        "Seems like you haven't connected your wallet. Please connect it to continue.",
+                      variant: 'default',
+                    });
+
+                    return;
+                  }
+
+                  handleTransfer(address);
+                }}
                 disabled={isTransferring || !recipientAddress}
                 className="button button-primary flex items-center"
               >
