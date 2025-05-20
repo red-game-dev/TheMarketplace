@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsEnum, IsOptional, isEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEVMAddress } from 'src/common/pipes/evm-address.validator';
 import { ChainId } from 'src/core/config/networks';
@@ -33,8 +33,9 @@ export class TransferNFTDto {
   @ApiProperty({
     description: 'Chain ID of the NFT',
     example: '1',
+    enum: ChainId,
   })
-  @IsString()
+  @IsEnum(ChainId)
   chainId: ChainId;
 
   @ApiPropertyOptional({
