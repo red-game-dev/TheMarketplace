@@ -64,6 +64,7 @@ export function useNftTransfer(nft: NFT, recipientAddress: string, onTransferCom
             contractAddress: nft.contractAddress,
             tokenId: nft.tokenId,
             tokenType: nft.tokenType,
+            chainId: nft.chainId,
           },
         );
 
@@ -74,6 +75,7 @@ export function useNftTransfer(nft: NFT, recipientAddress: string, onTransferCom
           fromAddress: walletAddress,
           toAddress: recipientAddress,
           contractAddress: nft.contractAddress,
+          chainId: nft.chainId,
           tokenId: nft.tokenId,
           status: 'pending',
           createdAt: new Date().toISOString(),
@@ -151,13 +153,14 @@ export function useNftTransfer(nft: NFT, recipientAddress: string, onTransferCom
       nft.tokenType,
       nft.contractAddress,
       nft.tokenId,
+      nft.chainId,
       transfer,
       setActiveTransfer,
       setTransferStatus,
       waitForTransaction,
       updateStatus,
       onTransferComplete,
-      activeTransfer,
+      activeTransfer?.id,
       resetTransfer,
     ],
   );

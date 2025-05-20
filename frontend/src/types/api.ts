@@ -1,3 +1,5 @@
+import { ChainId } from './network';
+
 export interface ApiResponse<T, AdditionalMetaData = { [key: string]: never }> {
   data: T;
   meta?: {
@@ -56,6 +58,7 @@ export interface NFTMetadata {
 export interface NFT {
   contractAddress: string;
   tokenId: string;
+  chainId: ChainId;
   tokenType: 'ERC721' | 'ERC1155';
   metadata: NFTMetadata;
 }
@@ -66,6 +69,7 @@ export interface TransactionStatus {
   toAddress: string;
   contractAddress: string;
   tokenId: string;
+  chainId: ChainId;
   status: 'pending' | 'completed' | 'failed';
   txHash?: string;
   error?: string;
@@ -78,6 +82,8 @@ export interface Transaction {
   created_at: Date;
   from_address: string;
   id: string;
+  chainId?: ChainId;
+  networkName?: string;
   status: 'pending' | 'completed' | 'failed';
   to_address: string;
   token_id: string;

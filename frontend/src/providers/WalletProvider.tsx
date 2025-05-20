@@ -1,13 +1,18 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import { useToast } from '@/hooks/useToast';
 import { getStoredAuth } from '@/services/api/auth';
 import { useAuth } from '@/hooks/useAuth';
+import { CHAIN_PARAMS } from '@/config/networks/web3';
+import { useAppStore } from '@/store';
+import { getAppStore } from './store';
+import { useNetworks } from '@/hooks/useNetworks';
 
 interface WalletContextType {
   address: string | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  switchNetwork: (chainId: keyof typeof CHAIN_PARAMS) => Promise<void>;
   isConnecting: boolean;
   isInitializing: boolean;
   error: string | null;
@@ -17,6 +22,7 @@ const WalletContext = createContext<WalletContextType>({
   address: null,
   connect: async () => {},
   disconnect: () => {},
+  switchNetwork: async () => {},
   isConnecting: false,
   isInitializing: true,
   error: null,
@@ -29,6 +35,56 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { login, logout } = useAuth();
+  const selectedNetwork = useAppStore().use.selectedNetwork();
+  const networkMode = useAppStore().use.networkMode();
+  const { setSelectedNetwork } = useAppStore().getState();
+  const { fetchNetworks } = useNetworks();
+
+  useEffect(() => {
+    fetchNetworks(networkMode);
+  }, [fetchNetworks, networkMode]);
+
+  const switchNetwork = useCallback(
+    async (chainId: keyof typeof CHAIN_PARAMS) => {
+      if (typeof window.ethereum === 'undefined') {
+        toast({
+          title: 'MetaMask Required',
+          description: 'Please install MetaMask to use this application',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: `0x${chainId.toString(16)}` }],
+        });
+      } catch (switchError: any) {
+        if (switchError.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [CHAIN_PARAMS[chainId]],
+            });
+          } catch {
+            toast({
+              title: 'Error',
+              description: 'Failed to add network to MetaMask',
+              variant: 'destructive',
+            });
+          }
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Failed to switch network',
+            variant: 'destructive',
+          });
+        }
+      }
+    },
+    [toast],
+  );
 
   const connect = async () => {
     if (typeof window.ethereum === 'undefined') {
@@ -72,6 +128,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
 
         setAddress(response.user.walletAddress);
+
+        if (selectedNetwork) {
+          try {
+            const network = await provider.getNetwork();
+            if (network.chainId !== selectedNetwork.chainId) {
+              await switchNetwork(selectedNetwork.chainId);
+            }
+          } catch (error) {
+            console.error('Failed to switch network:', error);
+          }
+        }
       } catch (err: unknown) {
         console.error('Connection error:', err);
         if (err && typeof err === 'object' && 'code' in err && err.code !== 4001) {
@@ -100,10 +167,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     setAddress(null);
     logout();
-  };
+  }, [logout]);
 
   useEffect(() => {
     const init = async () => {
@@ -116,6 +183,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
           if (accounts.length > 0 && accounts[0].toLowerCase() === walletAddress.toLowerCase()) {
             setAddress(walletAddress);
+
+            if (selectedNetwork) {
+              const network = await provider.getNetwork();
+              if (network.chainId !== selectedNetwork.chainId) {
+                await switchNetwork(selectedNetwork.chainId);
+              }
+            }
           } else {
             disconnect();
           }
@@ -141,8 +215,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      const handleChainChanged = () => {
-        window.location.reload();
+      const handleChainChanged = async (chainIdHex: string) => {
+        const chainId = parseInt(chainIdHex, 16);
+        const networks = getAppStore().getState().networks;
+        const network = networks.find(n => n.chainId === chainId);
+
+        if (network) {
+          setSelectedNetwork(network);
+        } else {
+          await fetchNetworks(networkMode);
+        }
       };
 
       window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -155,7 +237,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       };
     }
-  }, [address]);
+  }, [
+    address,
+    disconnect,
+    fetchNetworks,
+    networkMode,
+    selectedNetwork,
+    setSelectedNetwork,
+    switchNetwork,
+  ]);
 
   return (
     <WalletContext.Provider
@@ -163,6 +253,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         address,
         connect,
         disconnect,
+        switchNetwork,
         isConnecting,
         isInitializing,
         error,

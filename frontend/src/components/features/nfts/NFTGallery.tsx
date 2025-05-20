@@ -28,9 +28,10 @@ export function NFTGallery() {
   const nftListOffset = useAppStore().use.nftListOffset();
   const hasNFTs = useAppStore().use.hasNFTs();
   const { clearNFTs } = useAppStore().getState();
+  const selectedNetwork = useAppStore().use.selectedNetwork();
 
   const { isLoading, error } = useGetNFTs(
-    { walletAddress: address || '' },
+    { walletAddress: address || '', chainId: selectedNetwork?.chainId || 1 },
     { limit: ITEMS_PER_PAGE, offset: 0 },
   );
 
@@ -43,7 +44,10 @@ export function NFTGallery() {
     if (!address || isLoadingMore) return;
     setIsLoadingMore(true);
     try {
-      await getNFTs({ walletAddress: address }, { limit: ITEMS_PER_PAGE, offset: nftListOffset });
+      await getNFTs(
+        { walletAddress: address, chainId: selectedNetwork?.chainId || 1 },
+        { limit: ITEMS_PER_PAGE, offset: nftListOffset },
+      );
     } catch (error: unknown) {
       console.error('Error loading more NFTs:', error);
       toast({
@@ -54,7 +58,7 @@ export function NFTGallery() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [address, nftListOffset, isLoadingMore, toast]);
+  }, [address, isLoadingMore, selectedNetwork?.chainId, nftListOffset, toast]);
 
   useEffect(() => {
     if (error) {
@@ -124,7 +128,10 @@ export function NFTGallery() {
             setSelectedNFT(null);
             setTimeout(async () => {
               clearNFTs();
-              await getNFTs({ walletAddress: address || '' }, { limit: ITEMS_PER_PAGE, offset: 0 });
+              await getNFTs(
+                { walletAddress: address || '', chainId: selectedNetwork?.chainId || 1 },
+                { limit: ITEMS_PER_PAGE, offset: 0 },
+              );
             }, 3000);
           }}
         />

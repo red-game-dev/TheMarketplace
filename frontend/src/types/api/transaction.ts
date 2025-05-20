@@ -1,5 +1,6 @@
 import type { Endpoint } from 'fetchff';
 import { ApiResponse, TransactionsResponse } from '@/types/api';
+import { ChainId } from '@/types/network';
 
 export interface TransactionMethods {
   /**
@@ -19,6 +20,7 @@ export interface GetTransactionsQueryParams {
 
 export interface GetTransactionsPathParams {
   walletAddress: string;
+  chainId: ChainId;
 }
 
 export type GetTransactionsResponse = ApiResponse<TransactionsResponse>;

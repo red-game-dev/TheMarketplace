@@ -1,6 +1,7 @@
 import { IsString, IsEnum, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEVMAddress } from 'src/common/pipes/evm-address.validator';
+import { ChainId } from 'src/core/config/networks';
 
 export enum NFTType {
   ERC721 = 'ERC721',
@@ -28,6 +29,13 @@ export class TransferNFTDto {
   })
   @IsString()
   tokenId: string;
+
+  @ApiProperty({
+    description: 'Chain ID of the NFT',
+    example: '1',
+  })
+  @IsString()
+  chainId: ChainId;
 
   @ApiPropertyOptional({
     description: 'Type of NFT (ERC721 or ERC1155)',

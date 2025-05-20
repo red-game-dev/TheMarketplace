@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { createUserProfileState } from '@/store/slices/user/userProfile';
 import { createNFTState } from '@/store/slices/nft/nft';
 import { createTransactionState } from '@/store/slices/transaction/transaction';
+import { createNetworkState } from '@/store/slices/network/network';
 
 export const initAppStore = (): StoreState => {
   return defaultState;
@@ -19,6 +20,7 @@ export const createAppStore = (initState: StoreState = defaultState) => {
     devtools(
       logger((...params) => ({
         ...initState,
+        ...createNetworkState(...params),
         ...createErrorState(...params),
         ...createUserProfileState(...params),
         ...createNFTState(...params),

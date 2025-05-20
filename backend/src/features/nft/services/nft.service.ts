@@ -9,11 +9,12 @@ import { UpdateTransactionDto } from '../dto/transfer.dto';
 import { PaginationDto } from '../dto/pagination.dto';
 import { TransactionService } from 'src/features/transaction/services/transaction.service';
 import { CacheService } from 'src/core/cache/cache.service';
+import { NetworkService } from 'src/features/networks/services/network.service';
+import { ChainId } from 'src/core/config/networks';
 
 @Injectable()
 export class NftService {
   private readonly logger = new Logger(NftService.name);
-  private provider: ethers.providers.JsonRpcProvider;
   private wallet: ethers.Wallet;
   public static readonly CACHE_KEY_PREFIX = 'NFTS_LIST_';
   private readonly TRANSACTIONS_HISTORY = TransactionService.CACHE_KEY_PREFIX;
@@ -35,28 +36,53 @@ export class NftService {
     @Inject('SUPABASE_CLIENT') private supabase: SupabaseClient,
     private metadataService: NFTMetadataService,
     private readonly cacheService: CacheService,
+    private readonly networkService: NetworkService,
   ) {
-    const rpcUrl = this.configService.get<string>('POLYGON_RPC_URL');
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
 
-    if (!rpcUrl || !privateKey) {
-      throw new Error('Missing configuration for NFT service');
+    if (!privateKey) {
+      throw new Error('Missing PRIVATE_KEY configuration for NFT service');
     }
 
-    this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-    this.wallet = new ethers.Wallet(privateKey, this.provider);
+    const polygonProvider = this.networkService.getProvider(ChainId.POLYGON);
+    this.wallet = new ethers.Wallet(privateKey, polygonProvider);
   }
 
-  async getNFTs(walletAddress: string, { limit = 10, offset = 0 }: PaginationDto) {
+  async getNFTs(
+    walletAddress: string,
+    { limit = 10, offset = 0 }: PaginationDto,
+    chainId?: ChainId,
+  ) {
     try {
-      const cacheKey = `${NftService.CACHE_KEY_PREFIX}${walletAddress}_${limit}_${offset}`;
+      const chainKey = chainId ? chainId.toString() : 'all';
+      const cacheKey = `${NftService.CACHE_KEY_PREFIX}${walletAddress}_${chainKey}_${limit}_${offset}`;
 
       const cachedNFTs = await this.cacheService.get(cacheKey);
       if (cachedNFTs) {
         return JSON.parse(cachedNFTs);
       }
 
-      const nfts = await this.fetchAllNFTs(walletAddress);
+      let nfts: any[] = [];
+
+      if (chainId) {
+        nfts = await this.fetchNFTsForChain(walletAddress, chainId);
+      } else {
+        const mainnetNetworks = this.networkService.getMainnetNetworks();
+        const nftPromises = mainnetNetworks.map(network =>
+          this.fetchNFTsForChain(walletAddress, network.chainId || 1),
+        );
+
+        const results = await Promise.allSettled(nftPromises);
+
+        nfts = results.reduce((acc, result, index) => {
+          if (result.status === 'fulfilled') {
+            return [...acc, ...result.value];
+          }
+          this.logger.warn(`Failed to fetch NFTs from ${mainnetNetworks[index].name}`);
+          return acc;
+        }, []);
+      }
+
       const total = nfts.length;
       const paginatedNFTs = nfts.slice(offset, offset + limit);
 
@@ -73,16 +99,26 @@ export class NftService {
       return response;
     } catch (error: any) {
       this.logger.error(`Error in getNFTs: ${error.message}`);
-      return await this.getMetadata(walletAddress, limit, offset);
+      return await this.getMetadataFromDatabase(walletAddress, limit, offset, chainId);
     }
   }
 
-  private async getMetadata(walletAddress: string, limit: number, offset: number) {
-    const { data: nftsMetaData, count } = await this.supabase
+  private async getMetadataFromDatabase(
+    walletAddress: string,
+    limit: number,
+    offset: number,
+    chainId?: ChainId,
+  ) {
+    let query = this.supabase
       .from('nft_metadata')
       .select('*', { count: 'exact' })
-      .eq('wallet_address', walletAddress.toLowerCase())
-      .range(offset, offset + limit - 1);
+      .eq('owner_address', walletAddress.toLowerCase());
+
+    if (chainId) {
+      query = query.eq('chain_id', chainId);
+    }
+
+    const { data: nftsMetaData, count } = await query.range(offset, offset + limit - 1);
 
     return {
       data: nftsMetaData || [],
@@ -93,52 +129,67 @@ export class NftService {
     };
   }
 
-  async fetchAllNFTs(walletAddress: string) {
-    this.logger.log(`Fetching NFTs for wallet: ${walletAddress}`);
+  private async fetchNFTsForChain(walletAddress: string, chainId: ChainId) {
+    const networkConfig = this.networkService.getNetworkConfig(chainId);
+    this.logger.log(`Fetching NFTs for wallet ${walletAddress} on ${networkConfig.name}`);
 
     try {
-      const transactions = await this.fetchNFTTransactions(walletAddress);
-      if (!transactions.length) return [];
+      const transactions = await this.networkService.fetchNFTTransactions(walletAddress, chainId);
 
-      const nfts = await this.processTransactions(walletAddress, transactions);
-      await this.insertNFTsMetaData(walletAddress, nfts);
+      if (!transactions.length) {
+        this.logger.log(`No NFT transactions found for ${walletAddress} on ${networkConfig.name}`);
+        return [];
+      }
+
+      const nfts = await this.processTransactions(walletAddress, transactions, chainId);
+
+      await this.insertNFTsMetaData(walletAddress, nfts, chainId);
+
       return nfts;
-    } catch (error: any) {
-      this.logger.error(`Error in fetchAllNFTs: ${error.message}`);
-      return this.getFallbackMetadata(walletAddress);
+    } catch (error) {
+      this.logger.error(`Error fetching NFTs on ${networkConfig.name}: ${error.message}`);
+      return this.getFallbackMetadata(walletAddress, chainId);
     }
   }
 
-  private async processTransactions(walletAddress: string, transactions: any[]) {
+  private async processTransactions(walletAddress: string, transactions: any[], chainId: ChainId) {
     const uniqueTokens = new Map();
+    const networkConfig = this.networkService.getNetworkConfig(chainId);
 
     for (const tx of transactions.reverse()) {
-      const key = `${tx.contractAddress}-${tx.tokenID}`;
+      const key = `${tx.contractAddress}-${tx.tokenID}-${chainId}`;
 
-      if (tx.to.toLowerCase() === walletAddress.toLowerCase()) {
+      if (tx.to && tx.to.toLowerCase() === walletAddress.toLowerCase()) {
         try {
           const isOwner = await this.verifyNFTOwnership(
             walletAddress,
             tx.contractAddress,
             tx.tokenID,
+            chainId,
           );
 
           if (isOwner && !uniqueTokens.has(key)) {
-            const metadata = await this.getTokenMetadata(tx.contractAddress, tx.tokenID);
+            const metadata = await this.metadataService.getMetadata(
+              tx.contractAddress,
+              tx.tokenID,
+              chainId,
+            );
             uniqueTokens.set(key, {
               contractAddress: tx.contractAddress,
               tokenId: tx.tokenID,
               tokenType: 'ERC721',
               metadata,
-              tokenName: tx.tokenName || 'Unknown Token',
+              tokenName: tx.tokenName || `NFT ${tx.tokenID}`,
+              chainId: chainId,
+              networkName: networkConfig.name,
             });
           }
         } catch (error: any) {
           this.logger.error(
-            `Error processing token ${tx.tokenID} from ${tx.contractAddress}: ${error.message}`,
+            `Error processing token ${tx.tokenID} from ${tx.contractAddress} on ${networkConfig.name}: ${error.message}`,
           );
         }
-      } else if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
+      } else if (tx.from && tx.from.toLowerCase() === walletAddress.toLowerCase()) {
         uniqueTokens.delete(key);
       }
     }
@@ -146,54 +197,7 @@ export class NftService {
     return Array.from(uniqueTokens.values());
   }
 
-  private async getTokenMetadata(contractAddress: string, tokenId: string) {
-    try {
-      return await this.metadataService.getMetadata(contractAddress, tokenId);
-    } catch (error: any) {
-      this.logger.error(
-        `Error fetching metadata for ${contractAddress}:${tokenId} - ${error.message}`,
-      );
-      return {
-        name: `NFT #${tokenId}`,
-        description: 'Metadata temporarily unavailable',
-        image: '',
-      };
-    }
-  }
-
-  private async fetchNFTTransactions(walletAddress: string) {
-    const polygonScanApiKey = this.configService.get<string>('POLYGON_SCAN_API_KEY');
-    const params = new URLSearchParams({
-      module: 'account',
-      action: 'tokennfttx',
-      address: walletAddress,
-      startblock: '0',
-      endblock: '999999999',
-      sort: 'asc',
-      apikey: polygonScanApiKey || '',
-    });
-    const url = `https://api.polygonscan.com/api?${params.toString()}`;
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.status === '1' && Array.isArray(data.result)) {
-        return data.result;
-      }
-      return [];
-    } catch (error: any) {
-      this.logger.error(`Error fetching NFT transactions: ${error.message}`);
-      return [];
-    }
-  }
-
-  private async insertNFTsMetaData(walletAddress: string, nfts: any[]) {
+  private async insertNFTsMetaData(walletAddress: string, nfts: any[], chainId: ChainId) {
     try {
       if (nfts.length === 0) return;
 
@@ -201,13 +205,15 @@ export class NftService {
         owner_address: walletAddress.toLowerCase(),
         contract_address: nft.contractAddress.toLowerCase(),
         token_id: nft.tokenId,
+        chain_id: chainId,
+        network_name: nft.networkName || this.networkService.getNetworkConfig(chainId).name,
         metadata: nft.metadata,
         token_type: nft.tokenType || 'ERC721',
         last_updated: new Date().toISOString(),
       }));
 
       const { error } = await this.supabase.from('nft_metadata').upsert(nftMetaDataData, {
-        onConflict: 'contract_address,token_id',
+        onConflict: 'contract_address,token_id,chain_id',
       });
 
       if (error) {
@@ -216,51 +222,62 @@ export class NftService {
         for (const nft of nftMetaDataData) {
           try {
             await this.supabase.from('nft_metadata').upsert(nft, {
-              onConflict: 'contract_address,token_id',
+              onConflict: 'contract_address,token_id,chain_id',
             });
           } catch (individualError: any) {
             this.logger.error(
-              `Error updating individual NFT ${nft.contract_address}:${nft.token_id} - ${individualError.message}`,
+              `Error updating individual NFT ${nft.contract_address}:${nft.token_id} on chain ${chainId}: ${individualError.message}`,
             );
           }
         }
       }
 
       const validTokenKeys = new Set(
-        nftMetaDataData.map(nft => `${nft.contract_address}-${nft.token_id}`),
+        nftMetaDataData.map(nft => `${nft.contract_address}-${nft.token_id}-${nft.chain_id}`),
       );
 
       const { data: existingEntries } = await this.supabase
         .from('nft_metadata')
-        .select('contract_address, token_id')
-        .eq('owner_address', walletAddress.toLowerCase());
+        .select('contract_address, token_id, chain_id')
+        .eq('owner_address', walletAddress.toLowerCase())
+        .eq('chain_id', chainId);
 
       if (existingEntries) {
         const entriesToDelete = existingEntries.filter(
-          entry => !validTokenKeys.has(`${entry.contract_address}-${entry.token_id}`),
+          entry =>
+            !validTokenKeys.has(`${entry.contract_address}-${entry.token_id}-${entry.chain_id}`),
         );
 
         if (entriesToDelete.length > 0) {
+          this.logger.log(`Deleting ${entriesToDelete.length} obsolete NFT entries`);
+
           for (const entry of entriesToDelete) {
             await this.supabase
               .from('nft_metadata')
               .delete()
               .eq('owner_address', walletAddress.toLowerCase())
               .eq('contract_address', entry.contract_address)
-              .eq('token_id', entry.token_id);
+              .eq('token_id', entry.token_id)
+              .eq('chain_id', entry.chain_id);
           }
         }
       }
     } catch (error: any) {
-      this.logger.error(`Error caching NFTs: ${error.message}`);
+      this.logger.error(`Error caching NFTs on chain ${chainId}: ${error.message}`);
     }
   }
 
-  private async getFallbackMetadata(walletAddress: string) {
-    const { data: metadataNFTs } = await this.supabase
+  private async getFallbackMetadata(walletAddress: string, chainId?: ChainId) {
+    let query = this.supabase
       .from('nft_metadata')
       .select('*')
-      .eq('wallet_address', walletAddress.toLowerCase());
+      .eq('owner_address', walletAddress.toLowerCase());
+
+    if (chainId) {
+      query = query.eq('chain_id', chainId);
+    }
+
+    const { data: metadataNFTs } = await query;
 
     return metadataNFTs || [];
   }
@@ -269,20 +286,27 @@ export class NftService {
     walletAddress: string,
     contractAddress: string,
     tokenId: string,
+    chainId: ChainId = ChainId.POLYGON,
   ): Promise<boolean> {
     try {
-      const contract = new ethers.Contract(contractAddress, this.NFT_ABI, this.provider);
-      const owner = await contract.ownerOf(tokenId);
-      return owner.toLowerCase() === walletAddress.toLowerCase();
-    } catch {
+      const provider = this.networkService.getProvider(chainId);
+      const contract = new ethers.Contract(contractAddress, this.NFT_ABI, provider);
+
       try {
-        const contract = new ethers.Contract(contractAddress, this.NFT_ABI, this.provider);
-        const balance = await contract.balanceOf(walletAddress, tokenId);
-        return balance.gt(0);
-      } catch (innerError: any) {
-        console.error('Error verifying NFT ownership:', innerError);
-        return false;
+        const owner = await contract.ownerOf(tokenId);
+        return owner.toLowerCase() === walletAddress.toLowerCase();
+      } catch {
+        try {
+          const balance = await contract.balanceOf(walletAddress, tokenId);
+          return balance.gt(0);
+        } catch (innerError: any) {
+          this.logger.error(`Error verifying NFT ownership on ${chainId}:`, innerError);
+          return false;
+        }
       }
+    } catch (error) {
+      this.logger.error(`Error verifying NFT ownership on chain ${chainId}: ${error.message}`);
+      return false;
     }
   }
 
@@ -291,10 +315,11 @@ export class NftService {
     toAddress: string,
     contractAddress: string,
     tokenId: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     tokenType?: string,
+    chainId: ChainId = ChainId.POLYGON,
   ): Promise<Transaction> {
     const transactionId = uuidv4();
+    const networkConfig = this.networkService.getNetworkConfig(chainId);
 
     try {
       if (!ethers.utils.isAddress(fromAddress) || !ethers.utils.isAddress(toAddress)) {
@@ -309,6 +334,8 @@ export class NftService {
           to_address: toAddress.toLowerCase(),
           contract_address: contractAddress,
           token_id: tokenId,
+          chain_id: chainId,
+          network_name: networkConfig.name,
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -320,8 +347,8 @@ export class NftService {
         throw new Error('Failed to create transaction record');
       }
 
-      this.clearCache(fromAddress);
-      this.clearCache(toAddress);
+      await this.clearNetworkCache(fromAddress, chainId);
+      await this.clearNetworkCache(toAddress, chainId);
 
       return {
         id: transactionId,
@@ -329,6 +356,8 @@ export class NftService {
         toAddress,
         contractAddress,
         tokenId,
+        chainId,
+        networkName: networkConfig.name,
         status: 'pending',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -358,8 +387,13 @@ export class NftService {
       throw new NotFoundException('Transaction not found');
     }
 
-    this.clearCache(transaction.fromAddress);
-    this.clearCache(transaction.toAddress);
+    if (transaction.chain_id) {
+      await this.clearNetworkCache(transaction.from_address, transaction.chain_id);
+      await this.clearNetworkCache(transaction.to_address, transaction.chain_id);
+    } else {
+      await this.clearCache(transaction.from_address);
+      await this.clearCache(transaction.to_address);
+    }
 
     return {
       id: transaction.id,
@@ -367,6 +401,8 @@ export class NftService {
       toAddress: transaction.to_address,
       contractAddress: transaction.contract_address,
       tokenId: transaction.token_id,
+      chainId: transaction.chain_id,
+      networkName: transaction.network_name,
       status: transaction.status,
       txHash: transaction.tx_hash,
       error: transaction.error,
@@ -385,7 +421,7 @@ export class NftService {
     );
     const keys = [...keysFromAddress, ...keysTransactionsHistory];
 
-    this.logger.log(`Clearing cache for wallet ${walletAddress}: keys [${keys.join(', ')}]`);
+    this.logger.log(`Clearing all cache for wallet ${walletAddress}: keys [${keys.join(', ')}]`);
 
     await Promise.all(
       keys.map(async key => {
@@ -406,6 +442,41 @@ export class NftService {
       );
     } else {
       this.logger.log(`Cache successfully cleared for wallet ${walletAddress}`);
+    }
+  }
+
+  async clearNetworkCache(walletAddress: string, chainId: ChainId) {
+    const cacheKey = `${NftService.CACHE_KEY_PREFIX}${walletAddress}_${chainId}*`;
+    const cacheKeyTransactionsHistory = `${this.TRANSACTIONS_HISTORY}${walletAddress}_${chainId}*`;
+
+    const keys = [
+      ...(await this.cacheService.keys(cacheKey)),
+      ...(await this.cacheService.keys(cacheKeyTransactionsHistory)),
+    ];
+
+    if (keys.length > 0) {
+      this.logger.log(
+        `Clearing cache for wallet ${walletAddress} on chain ${chainId}: ${keys.length} keys`,
+      );
+
+      await Promise.all(
+        keys.map(async key => {
+          await this.cacheService.del(key);
+        }),
+      );
+
+      this.logger.log(`Cache cleared for wallet ${walletAddress} on chain ${chainId}`);
+    }
+
+    const allCacheKey = `${NftService.CACHE_KEY_PREFIX}${walletAddress}_all*`;
+    const allKeys = await this.cacheService.keys(allCacheKey);
+
+    if (allKeys.length > 0) {
+      await Promise.all(
+        allKeys.map(async key => {
+          await this.cacheService.del(key);
+        }),
+      );
     }
   }
 
@@ -433,8 +504,13 @@ export class NftService {
       throw new Error('Failed to update transaction status');
     }
 
-    await this.clearCache(transaction.fromAddress);
-    await this.clearCache(transaction.toAddress);
+    if (transaction.chainId) {
+      await this.clearNetworkCache(transaction.fromAddress, transaction.chainId);
+      await this.clearNetworkCache(transaction.toAddress, transaction.chainId);
+    } else {
+      await this.clearCache(transaction.fromAddress);
+      await this.clearCache(transaction.toAddress);
+    }
 
     return this.getTransactionStatus(transactionId);
   }

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 import { UserModule } from './features/user/user.module';
 import { NftModule } from './features/nft/nft.module';
+import { NetworkModule } from './features/networks/network.module';
 import { AuthModule } from './core/auth/auth.module';
 import { SupabaseModule } from './core/database/supabase.module';
 import { SharedModule } from './core/shared/shared.module';
@@ -20,6 +21,10 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
           .valid('development', 'production', 'test', 'provision')
           .default('development'),
         PORT: Joi.number().port().default(4000),
+        ETHEREUM_RPC_URL: Joi.string().required(),
+        ETHEREUM_SCAN_API_KEY: Joi.string().required(),
+        POLYGON_RPC_URL: Joi.string().required(),
+        POLYGON_SCAN_API_KEY: Joi.string().required(),
       }),
     }),
     SupabaseModule,
@@ -30,6 +35,7 @@ import { RateLimitMiddleware } from './common/middleware/rate-limit.middleware';
     UserModule,
     NftModule,
     TransactionModule,
+    NetworkModule,
   ],
 })
 export class AppModule {

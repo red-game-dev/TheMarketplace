@@ -1,4 +1,5 @@
 import { IsString, IsEthereumAddress } from 'class-validator';
+import { ChainId } from 'src/core/config/networks';
 
 export class TransferNftDto {
   @IsEthereumAddress()
@@ -17,6 +18,8 @@ export interface Transaction {
   to: string;
   contractAddress: string;
   tokenId: string;
+  chainId?: ChainId;
+  networkName?: string;
   status: 'pending' | 'completed' | 'failed';
   txHash?: string;
   createdAt: Date;

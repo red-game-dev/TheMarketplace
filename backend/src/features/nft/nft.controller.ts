@@ -18,14 +18,18 @@ import { PaginationDto } from './dto/pagination.dto';
 import { User } from 'src/common/decorators/user.decorator';
 import { RateLimitGuard } from 'src/common/guards/rate-limit.guard';
 import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
+import { NetworkService } from 'src/features/networks/services/network.service';
 
 @ApiTags('NFTs')
 @Controller('nfts')
 @UseGuards(WalletAuthGuard)
 export class NftController {
-  constructor(private readonly nftService: NftService) {}
+  constructor(
+    private readonly nftService: NftService,
+    private readonly networkService: NetworkService,
+  ) {}
 
-  @Get(':walletAddress')
+  @Get(':chainId/:walletAddress/')
   @ApiOperation({ summary: 'Get NFTs for a wallet address' })
   @ApiResponse({ status: 200, description: 'Returns NFTs with pagination' })
   @UseGuards(RateLimitGuard)
@@ -33,11 +37,16 @@ export class NftController {
   async getNFTs(
     @Param('walletAddress') walletAddress: string,
     @Query() paginationDto: PaginationDto,
+    @Param('chainId') chainId?: number,
   ) {
-    return this.nftService.getNFTs(walletAddress, paginationDto);
+    return this.nftService.getNFTs(
+      walletAddress,
+      paginationDto,
+      chainId ? Number(chainId) : undefined,
+    );
   }
 
-  @Get(':walletAddress/:contractAddress/:tokenId/verify')
+  @Get(':walletAddress/:contractAddress/:tokenId/:chainId/verify')
   @ApiOperation({ summary: 'Verify NFT ownership' })
   @ApiResponse({ status: 200, description: 'Returns ownership status' })
   @UseGuards(RateLimitGuard)
@@ -46,9 +55,15 @@ export class NftController {
     @Param('walletAddress') walletAddress: string,
     @Param('contractAddress') contractAddress: string,
     @Param('tokenId') tokenId: string,
+    @Param('chainId') chainId: number,
   ) {
     return {
-      isOwner: await this.nftService.verifyNFTOwnership(walletAddress, contractAddress, tokenId),
+      isOwner: await this.nftService.verifyNFTOwnership(
+        walletAddress,
+        contractAddress,
+        tokenId,
+        chainId,
+      ),
     };
   }
 
@@ -72,6 +87,7 @@ export class NftController {
       transferDto.contractAddress,
       transferDto.tokenId,
       transferDto.tokenType,
+      transferDto.chainId,
     );
 
     return {

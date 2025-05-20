@@ -7,6 +7,7 @@ import {
   GetTransactionStatusPathParams,
   TransferNFTPathParams,
   TransferNFTRequest,
+  UpdateTransactionStatusPathParams,
   UpdateTransactionStatusRequest,
 } from '@/types/api/nft';
 
@@ -69,6 +70,7 @@ export async function transferNFT(
     setActiveTransfer({
       id: data.data.id,
       status: 'pending',
+      chainId: data.data.chainId,
       fromAddress: data.data.fromAddress,
       toAddress: data.data.toAddress,
       contractAddress: data.data.contractAddress,
@@ -84,7 +86,7 @@ export async function transferNFT(
 }
 
 export async function updateTransactionStatus(
-  urlPathParams: GetTransactionStatusPathParams,
+  urlPathParams: UpdateTransactionStatusPathParams,
   body: UpdateTransactionStatusRequest,
 ): Promise<TransactionStatus> {
   const { data } = await api.updateTransactionStatus({

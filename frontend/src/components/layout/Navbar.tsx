@@ -4,6 +4,7 @@ import { memo } from 'react';
 import Link from 'next/link';
 import { WalletConnect } from '@/components/features/wallet/WalletConnect';
 import { useWallet } from '@/providers/WalletProvider';
+import { NetworkSelector } from '@/components/features/wallet/NetworkSelector';
 
 export const Navbar = memo(function Navbar() {
   const { address } = useWallet();
@@ -33,7 +34,11 @@ export const Navbar = memo(function Navbar() {
               </div>
             )}
           </div>
-          <WalletConnect />
+
+          <div className="flex items-center space-x-4">
+            {address && <NetworkSelector />}
+            <WalletConnect />
+          </div>
         </div>
       </div>
     </nav>

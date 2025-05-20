@@ -34,6 +34,8 @@ CREATE TABLE transactions
   contract_address TEXT NOT NULL,
   token_id TEXT NOT NULL,
   status TEXT NOT NULL,
+  chain_id INTEGER NOT NULL DEFAULT 137,
+  network_name TEXT NOT NULL DEFAULT '',
   tx_hash TEXT,
   error TEXT,
   created_at TIMESTAMP
@@ -51,6 +53,8 @@ CREATE TABLE nft_metadata
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   contract_address TEXT NOT NULL,
   token_id TEXT NOT NULL,
+  chain_id INTEGER NOT NULL DEFAULT 137,
+  network_name TEXT NOT NULL DEFAULT '',
   metadata JSONB NOT NULL,
   last_updated TIMESTAMP
   WITH TIME ZONE DEFAULT timezone
@@ -64,7 +68,7 @@ CREATE TABLE nft_metadata
   name TEXT,
   description TEXT,
   UNIQUE
-  (contract_address, token_id)
+  (contract_address, token_id, chain_id)
 );
 
 -- Create indexes

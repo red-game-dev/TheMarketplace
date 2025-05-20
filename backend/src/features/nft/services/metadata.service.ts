@@ -4,11 +4,12 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { ethers } from 'ethers';
 import { formatTokenUrl } from 'src/utils/strings/formatTokenUrl';
 import { isHtmlResponse } from 'src/utils/html/isHtmlResponse';
+import { NetworkService } from 'src/features/networks/services/network.service';
+import { ChainId } from 'src/core/config/networks';
 
 @Injectable()
 export class NFTMetadataService {
   private readonly logger = new Logger(NFTMetadataService.name);
-  private provider: ethers.providers.JsonRpcProvider;
   private CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
   private readonly NFT_ABI = [
@@ -25,42 +26,43 @@ export class NFTMetadataService {
     @Inject('SUPABASE_CLIENT')
     private supabase: SupabaseClient,
     private configService: ConfigService,
-  ) {
-    this.provider = new ethers.providers.JsonRpcProvider(
-      this.configService.get<string>('POLYGON_RPC_URL'),
-    );
-    this.provider.polling = true;
-    this.provider.pollingInterval = 10000;
-  }
+    private networkService: NetworkService,
+  ) {}
 
-  async getMetadata(contractAddress: string, tokenId: string) {
+  async getMetadata(contractAddress: string, tokenId: string, chainId: ChainId = ChainId.POLYGON) {
     try {
-      const cachedData = await this.checkCache(contractAddress, tokenId);
+      const cachedData = await this.checkCache(contractAddress, tokenId, chainId);
       if (cachedData) {
         return cachedData.metadata;
       }
 
-      const metadata = await this.fetchMetadataFromContract(contractAddress, tokenId);
+      const metadata = await this.fetchMetadataFromContract(contractAddress, tokenId, chainId);
 
-      await this.updateMetadataCache(contractAddress, tokenId, metadata);
+      await this.updateMetadataCache(contractAddress, tokenId, metadata, chainId);
 
       return metadata;
     } catch (error: any) {
       this.logger.error(
-        `Error fetching metadata for ${contractAddress}:${tokenId} - ${error.message}`,
+        `Error fetching metadata for ${contractAddress}:${tokenId} on chain ${chainId} - ${error.message}`,
       );
 
-      const cachedData = await this.checkCache(contractAddress, tokenId, true);
+      const cachedData = await this.checkCache(contractAddress, tokenId, chainId, true);
       if (cachedData) {
         return cachedData.metadata;
       }
 
-      return this.getFallbackMetadata(contractAddress, tokenId);
+      return this.getFallbackMetadata(contractAddress, tokenId, chainId);
     }
   }
 
-  private async fetchMetadataFromContract(contractAddress: string, tokenId: string) {
-    const contract = new ethers.Contract(contractAddress, this.NFT_ABI, this.provider);
+  private async fetchMetadataFromContract(
+    contractAddress: string,
+    tokenId: string,
+    chainId: ChainId,
+  ) {
+    const provider = this.networkService.getProvider(chainId);
+    const contract = new ethers.Contract(contractAddress, this.NFT_ABI, provider);
+    const networkName = this.networkService.getNetworkConfig(chainId).name;
 
     try {
       // Try ERC721 tokenURI first
@@ -73,7 +75,7 @@ export class NFTMetadataService {
           tokenURI = await contract.uri(tokenId);
           tokenURI = tokenURI.replace('{id}', tokenId.padStart(64, '0'));
         } catch {
-          throw new Error('Failed to fetch token URI');
+          throw new Error(`Failed to fetch token URI on ${networkName}`);
         }
       }
 
@@ -81,7 +83,7 @@ export class NFTMetadataService {
       return await this.fetchAndParseMetadata(formattedURI);
     } catch (error: any) {
       this.logger.error(
-        `Contract interaction error for ${contractAddress}:${tokenId} - ${error.message}`,
+        `Contract interaction error for ${contractAddress}:${tokenId} on ${networkName} - ${error.message}`,
       );
       throw error;
     }
@@ -174,24 +176,32 @@ export class NFTMetadataService {
     };
   }
 
-  private getFallbackMetadata(contractAddress: string, tokenId: string) {
+  private getFallbackMetadata(contractAddress: string, tokenId: string, chainId: ChainId) {
+    const networkName = this.networkService.getNetworkConfig(chainId).name;
     return {
       name: `NFT ${tokenId}`,
-      description: 'Metadata temporarily unavailable',
+      description: `Metadata temporarily unavailable on ${networkName}`,
       image: '',
       attributes: [],
       contract_address: contractAddress,
       token_id: tokenId,
+      chain_id: chainId,
     };
   }
 
-  private async checkCache(contractAddress: string, tokenId: string, ignoreAge = false) {
+  private async checkCache(
+    contractAddress: string,
+    tokenId: string,
+    chainId: ChainId,
+    ignoreAge = false,
+  ) {
     try {
       const { data: cachedMetadata, error: cacheError } = await this.supabase
         .from('nft_metadata')
         .select('*')
         .eq('contract_address', contractAddress.toLowerCase())
         .eq('token_id', tokenId)
+        .eq('chain_id', chainId) // Add chain_id to query
         .single();
 
       if (cacheError) return null;
@@ -211,13 +221,19 @@ export class NFTMetadataService {
     }
   }
 
-  private async updateMetadataCache(contractAddress: string, tokenId: string, metadata: any) {
+  private async updateMetadataCache(
+    contractAddress: string,
+    tokenId: string,
+    metadata: any,
+    chainId: ChainId,
+  ) {
     try {
       const { error } = await this.supabase
         .from('nft_metadata')
         .upsert({
           contract_address: contractAddress.toLowerCase(),
           token_id: tokenId,
+          chain_id: chainId,
           metadata,
           last_updated: new Date().toISOString(),
           last_checked: new Date().toISOString(),
@@ -236,16 +252,24 @@ export class NFTMetadataService {
     }
   }
 
-  async getMetadataBatch(nfts: Array<{ contractAddress: string; tokenId: string }>) {
+  async getMetadataBatch(
+    nfts: Array<{ contractAddress: string; tokenId: string; chainId?: ChainId }>,
+  ) {
     const results = await Promise.allSettled(
-      nfts.map(nft => this.getMetadata(nft.contractAddress, nft.tokenId)),
+      nfts.map(nft =>
+        this.getMetadata(nft.contractAddress, nft.tokenId, nft.chainId || ChainId.POLYGON),
+      ),
     );
 
     return results.map((result, index) => {
       if (result.status === 'fulfilled') {
         return result.value;
       }
-      return this.getFallbackMetadata(nfts[index].contractAddress, nfts[index].tokenId);
+      return this.getFallbackMetadata(
+        nfts[index].contractAddress,
+        nfts[index].tokenId,
+        nfts[index].chainId || ChainId.POLYGON,
+      );
     });
   }
 }

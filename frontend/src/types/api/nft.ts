@@ -1,5 +1,6 @@
 import type { Endpoint, QueryParams } from 'fetchff';
 import { ApiResponse, NFTsResponse, TransactionStatus } from '@/types/api';
+import { ChainId } from '@/types/network';
 
 export interface NFTMethods {
   /**
@@ -32,7 +33,7 @@ export interface NFTMethods {
   updateTransactionStatus: Endpoint<
     GetTransactionStatusResponse,
     QueryParams,
-    GetTransactionStatusPathParams,
+    UpdateTransactionStatusPathParams,
     UpdateTransactionStatusRequest
   >;
 }
@@ -43,10 +44,15 @@ export interface GetNFTsQueryParams {
 }
 
 export interface GetNFTsPathParams {
+  chainId: number;
   walletAddress: string;
 }
 
 export interface GetTransactionStatusPathParams {
+  id: string;
+}
+
+export interface UpdateTransactionStatusPathParams {
   id: string;
 }
 
@@ -59,6 +65,7 @@ export interface TransferNFTRequest {
   contractAddress: string;
   tokenId: string;
   tokenType?: 'ERC721' | 'ERC1155';
+  chainId: ChainId;
 }
 
 export interface UpdateTransactionStatusRequest {
@@ -73,6 +80,7 @@ export type TransferNFTResponse = ApiResponse<{
   id: string;
   fromAddress: string;
   toAddress: string;
+  chainId: ChainId;
   contractAddress: string;
   tokenId: string;
   status: 'pending';

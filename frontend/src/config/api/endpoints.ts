@@ -21,7 +21,7 @@ export const endpoints = {
 
   // NFTs
   getNFTs: {
-    url: '/nfts/:walletAddress',
+    url: '/nfts/:chainId/:walletAddress/',
     method: 'GET',
   },
   getTransactionStatus: {
@@ -36,10 +36,14 @@ export const endpoints = {
     url: '/nfts/transaction/:id',
     method: 'PUT',
   },
+  getNetworks: {
+    url: '/network/list/:mode',
+    method: 'GET',
+  },
 
   // Transactions
   getTransactions: {
-    url: '/transactions/:walletAddress',
+    url: '/transactions/:chainId/:walletAddress',
     method: 'GET',
   },
 };

@@ -22,9 +22,10 @@ export function TransactionHistory() {
   const transactionListHasMore = useAppStore().use.transactionListHasMore();
   const transactionListOffset = useAppStore().use.transactionListOffset();
   const hasTransactions = useAppStore().use.hasTransactions();
+  const selectedNetwork = useAppStore().use.selectedNetwork();
 
   const { isLoading, error } = useGetTransactions(
-    { walletAddress: address || '' },
+    { walletAddress: address || '', chainId: selectedNetwork?.chainId || 1 },
     { limit: ITEMS_PER_PAGE, offset: 0 },
   );
 
@@ -33,7 +34,7 @@ export function TransactionHistory() {
     setIsLoadingMore(true);
     try {
       await getTransactions(
-        { walletAddress: address || '' },
+        { walletAddress: address || '', chainId: selectedNetwork?.chainId || 1 },
         { limit: ITEMS_PER_PAGE, offset: transactionListOffset },
       );
     } catch (error: unknown) {
@@ -46,7 +47,7 @@ export function TransactionHistory() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [address, isLoadingMore, transactionListOffset, toast]);
+  }, [address, isLoadingMore, selectedNetwork?.chainId, transactionListOffset, toast]);
 
   useEffect(() => {
     if (error) {

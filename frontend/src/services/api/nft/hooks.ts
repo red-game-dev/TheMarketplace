@@ -7,6 +7,7 @@ import {
   GetTransactionStatusPathParams,
   TransferNFTPathParams,
   TransferNFTRequest,
+  UpdateTransactionStatusPathParams,
   UpdateTransactionStatusRequest,
 } from '@/types/api/nft';
 
@@ -30,7 +31,7 @@ export const useTransferNFT = () => {
   };
 
   const updateStatus = async (
-    urlPathParams: GetTransactionStatusPathParams,
+    urlPathParams: UpdateTransactionStatusPathParams,
     body: UpdateTransactionStatusRequest,
   ) => {
     return updateTransactionStatus(urlPathParams, body);

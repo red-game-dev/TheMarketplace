@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowUpRight, ExternalLink } from 'lucide-react';
 import { shortenAddress } from '@/utils/string/shortenWeb3Address';
 import { TransactionStatus } from './TransactionStatus';
 import Link from 'next/link';
+import { useAppStore } from '@/store';
 
 interface TransactionRowProps {
   address: string;
@@ -12,6 +13,8 @@ interface TransactionRowProps {
 }
 
 export const TransactionRow = memo(function TransactionRow({ tx, address }: TransactionRowProps) {
+  const selectedNetwork = useAppStore().use.selectedNetwork();
+  const explorerLink = selectedNetwork?.blockExplorer;
   return (
     <div key={tx.id} className="transaction-item">
       <div className="flex items-start justify-between">
@@ -46,12 +49,12 @@ export const TransactionRow = memo(function TransactionRow({ tx, address }: Tran
       </div>
       {tx.tx_hash && (
         <Link
-          href={`https://polygonscan.com/tx/${tx.tx_hash}`}
+          href={`${explorerLink}/tx/${tx.tx_hash}`}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2 inline-flex items-center text-sm text-muted-foreground hover:text-muted-foreground/80"
         >
-          View on PolygonScan
+          View
           <ExternalLink className="ml-1 h-4 w-4" />
         </Link>
       )}

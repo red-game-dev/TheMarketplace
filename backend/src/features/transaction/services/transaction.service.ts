@@ -3,6 +3,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
 import { PaginationDto } from 'src/features/nft/dto/pagination.dto';
 import { CacheService } from 'src/core/cache/cache.service';
+import { ChainId } from 'src/core/config/networks';
+import { NetworkService } from 'src/features/networks/services/network.service';
 
 @Injectable()
 export class TransactionService {
@@ -13,9 +15,14 @@ export class TransactionService {
     private supabase: SupabaseClient,
     private configService: ConfigService,
     private readonly cacheService: CacheService,
+    private readonly networkService: NetworkService,
   ) {}
 
-  async getTransactionsByAddress(walletAddress: string, { limit = 10, offset = 0 }: PaginationDto) {
+  async getTransactionsByAddress(
+    walletAddress: string,
+    chainId: ChainId,
+    { limit = 10, offset = 0 }: PaginationDto,
+  ) {
     try {
       const cacheKey = `${TransactionService.CACHE_KEY_PREFIX}${walletAddress}_${limit}_${offset}`;
 
@@ -26,7 +33,7 @@ export class TransactionService {
 
       const [dbTx, chainTx] = await Promise.all([
         this.getDBTransactions(walletAddress),
-        this.getChainTransactions(walletAddress),
+        this.getChainTransactions(walletAddress, chainId),
       ]);
 
       const allTransactions = [...dbTx, ...chainTx].sort(
@@ -77,11 +84,13 @@ export class TransactionService {
     return data || [];
   }
 
-  private async getChainTransactions(walletAddress: string) {
+  private async getChainTransactions(walletAddress: string, chainId: ChainId) {
     try {
-      const polygonScanApiKey = this.configService.get<string>('POLYGON_SCAN_API_KEY');
+      const network = this.networkService.getNetworkConfig(chainId);
+      const scanApiKey = network.scanApiKey;
+      const scanApiEndpoint = network.scanApiEndpoint;
       const response = await fetch(
-        `https://api.polygonscan.com/api?module=account&action=tokennfttx&address=${walletAddress}&startblock=0&endblock=999999999&sort=desc&apikey=${polygonScanApiKey}`,
+        `${scanApiEndpoint}?module=account&action=tokennfttx&address=${walletAddress}&startblock=0&endblock=999999999&sort=desc&apikey=${scanApiKey}`,
       );
 
       const data = await response.json();
@@ -96,6 +105,8 @@ export class TransactionService {
         to_address: tx.to.toLowerCase(),
         contract_address: tx.contractAddress.toLowerCase(),
         token_id: tx.tokenID,
+        chainId: tx.chain_id,
+        networkName: tx.network_name,
         status: 'completed',
         tx_hash: tx.hash,
         created_at: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),

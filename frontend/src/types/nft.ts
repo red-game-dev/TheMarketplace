@@ -1,3 +1,5 @@
+import { ChainId } from '@/types/network';
+
 export interface NFTMetadata {
   name?: string;
   description?: string;
@@ -13,4 +15,5 @@ export interface NFT {
   tokenId: string;
   tokenType: 'ERC721' | 'ERC1155';
   metadata: NFTMetadata;
+  chainId: ChainId;
 }
