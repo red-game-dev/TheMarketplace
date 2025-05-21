@@ -46,7 +46,6 @@ cd web3-wallet-platform
 For backend (backend/.env):
 ```env
 PORT=4000
-CONTRACT_ADDRESS=0xdC0479CC5BbA033B3e7De9F178607150B3AbCe1f
 FRONTEND_URL=http://localhost:3000
 POLYGON_RPC_URL=https://polygon-rpc.com
 POLYGON_SCAN_API_KEY=your_polygonscan_api_key
