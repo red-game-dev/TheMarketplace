@@ -109,13 +109,6 @@ export const CHAIN_PARAMS = {
     rpcUrls: ['https://api.avax-test.network/ext/bc/C/rpc'],
     blockExplorerUrls: ['https://testnet.snowtrace.io'],
   },
-  [ChainId.BINANCE_TESTNET]: {
-    chainId: `0x${ChainId.BINANCE_TESTNET.toString(16)}`,
-    chainName: 'BNB Chain Testnet',
-    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-    rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545'],
-    blockExplorerUrls: ['https://testnet.bscscan.com'],
-  },
 };
 
 // For non-EVM chains like Solana, we need a different approach as they don't use the same wallet connection methods
@@ -124,15 +117,5 @@ export const NON_EVM_CHAINS = {
     name: 'Solana',
     endpoint: 'https://api.mainnet-beta.solana.com',
     blockExplorer: 'https://solscan.io',
-  },
-  [ChainId.SOLANA_DEVNET]: {
-    name: 'Solana Devnet',
-    endpoint: 'https://api.devnet.solana.com',
-    blockExplorer: 'https://explorer.solana.com/?cluster=devnet',
-  },
-  [ChainId.SOLANA_TESTNET]: {
-    name: 'Solana Testnet',
-    endpoint: 'https://api.testnet.solana.com',
-    blockExplorer: 'https://explorer.solana.com/?cluster=testnet',
   },
 };

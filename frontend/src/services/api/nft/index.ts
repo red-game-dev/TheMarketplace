@@ -24,6 +24,7 @@ export async function getNFTs(
   });
 
   const response = data.data;
+  console.log('getNFTS', response);
 
   if (queryParams?.offset === 0) {
     setNFTs(response.data);

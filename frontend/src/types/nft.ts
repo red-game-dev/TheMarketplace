@@ -16,4 +16,5 @@ export interface NFT {
   tokenType: 'ERC721' | 'ERC1155';
   metadata: NFTMetadata;
   chainId: ChainId;
+  source: string;
 }

@@ -22,6 +22,9 @@ export const useGetTransactionStatus = (urlPathParams: GetTransactionStatusPathP
   return useSWRImmutable(
     `${EndpointsKeys.getTransactionStatus}-${JSON.stringify(urlPathParams)}`,
     () => getTransactionStatus(urlPathParams),
+    {
+      isPaused: () => !urlPathParams.id,
+    },
   );
 };
 

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import {
+  ALCHEMY_NETWORKS,
   ChainId,
   NetWorkConfigList,
   NetworkType,
@@ -47,6 +48,17 @@ export class NetworkService {
     return config;
   }
 
+  getAlchemyEndpoint(chainId: ChainId): string {
+    const network = ALCHEMY_NETWORKS[chainId];
+    if (!network) return '';
+    const key =
+      this.configService.get<string>(
+        `ALCHEMY_API_KEY_${network.toUpperCase().replace(/-/g, '_')}`,
+        '',
+      ) || this.configService.get<string>(`ALCHEMY_API_KEY`, '');
+    return key ? `https://${network}.g.alchemy.com/nft/v3/${key}` : '';
+  }
+
   getProvider(chainId: ChainId): ethers.providers.JsonRpcProvider {
     const provider = this.providers.get(chainId);
     if (!provider) {
@@ -70,6 +82,62 @@ export class NetworkService {
   async fetchNFTTransactions(walletAddress: string, chainId: ChainId): Promise<any[]> {
     const network = this.getNetworkConfig(chainId);
 
+    // If Alchemy is supported, use it
+    const alchemyUrl = this.getAlchemyEndpoint(chainId);
+
+    console.log('alchemyUrl', alchemyUrl);
+
+    if (alchemyUrl) {
+      try {
+        const url = `${alchemyUrl}/getNFTsForOwner?withMetadata=true&owner=${walletAddress}&order=asc&category=erc721,erc1155`;
+        console.log('url', url);
+        const response = await fetch(url, {
+          headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) throw new Error(`Alchemy API error: ${response.status}`);
+        const data = await response.json();
+        console.log('response', data);
+
+        if (Array.isArray(data.ownedNfts)) {
+          return data.ownedNfts.map(nft => ({
+            blockNumber: data.validAt.blockNumber,
+            timeStamp: new Date(nft.timeLastUpdated).getTime().toString().slice(0, 10),
+            hash: nft.mint.transactionHash,
+            nonce: '0',
+            blockHash: data.validAt.blockHash,
+            from: undefined,
+            to: walletAddress,
+            contractAddress: nft.contract.address,
+            tokenID: nft.tokenId,
+            tokenName: nft.name || nft.contract.name || `NFT ${nft.tokenId}`,
+            tokenSymbol: nft.contract.symbol || '',
+            tokenDecimal: '0',
+            transactionIndex: '0',
+            gas: '0',
+            gasPrice: '0',
+            gasUsed: '0',
+            cumulativeGasUsed: '0',
+            input: 'deprecated',
+            confirmations: '0',
+            chainId,
+            source: 'alchemy',
+            metadata: {
+              name: nft.name || nft.raw?.metadata?.name,
+              description: nft.description || nft.raw?.metadata?.description,
+              image: nft.image?.originalUrl || nft.raw?.metadata?.image,
+              attributes: nft.raw?.metadata?.attributes || [],
+              tokenUri: nft.tokenUri,
+              tokenType: nft.tokenType,
+            },
+          }));
+        }
+      } catch (err) {
+        this.logger.error(`Alchemy fetch error on ${network.name}: ${err.message}`);
+      }
+    }
+
+    // Fallback to traditional scan endpoint
     try {
       const params = new URLSearchParams({
         module: 'account',
@@ -81,39 +149,25 @@ export class NetworkService {
         apikey: network.scanApiKey || '',
       });
 
-      console.log('network', network, params);
+      const scanUrl = network.scanApiEndpoint;
+      const url = `${scanUrl}?${params.toString()}`;
+      const response = await fetch(url);
 
-      const url = `${network.scanApiEndpoint}?${params.toString()}`;
-
-      this.logger.log(`Fetching NFT transactions from ${network.name} for ${walletAddress}`);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      console.log('url', url, chainId, walletAddress);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
       const data = await response.json();
 
       if (data.status === '1' && Array.isArray(data.result)) {
-        this.logger.log(`Found ${data.result.length} NFT transactions on ${network.name}`);
         return data.result.map(tx => ({
           ...tx,
           chainId,
-          network: network.name,
+          source: 'scan',
         }));
       }
-
-      return [];
-    } catch (error) {
-      this.logger.error(`Error fetching NFT transactions from ${network.name}: ${error.message}`);
-      return [];
+    } catch (err) {
+      this.logger.error(`Etherscan fetch failed on ${network.name}: ${err.message}`);
     }
+
+    return [];
   }
 
   switchNetworkMode(mode: NetworkType): Partial<NetWorkConfigList[ChainId]>[] {

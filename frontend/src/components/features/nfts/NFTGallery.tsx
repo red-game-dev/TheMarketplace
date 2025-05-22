@@ -30,10 +30,13 @@ export function NFTGallery() {
   const { clearNFTs } = useAppStore().getState();
   const selectedNetwork = useAppStore().use.selectedNetwork();
 
+  console.log('selectedNetwork?.chainId', selectedNetwork?.chainId);
+
   const { isLoading, error } = useGetNFTs(
     { walletAddress: address || '', chainId: selectedNetwork?.chainId || 1 },
     { limit: ITEMS_PER_PAGE, offset: 0 },
   );
+  console.log('isLoading', isLoading, error, nfts);
 
   const handleTransferClick = useCallback((nft: NFT) => {
     setSelectedNFT(nft);
@@ -69,6 +72,12 @@ export function NFTGallery() {
       });
     }
   }, [error, toast]);
+
+  // useEffect(() => {
+  //   if (nfts.length) {
+  //     clearNFTs();
+  //   }
+  // }, [clearNFTs, nfts.length, selectedNetwork?.chainId]);
 
   if (isLoading && !hasNFTs) {
     return (

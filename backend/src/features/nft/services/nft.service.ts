@@ -51,7 +51,7 @@ export class NftService {
   async getNFTs(
     walletAddress: string,
     { limit = 10, offset = 0 }: PaginationDto,
-    chainId?: ChainId,
+    chainId: ChainId = ChainId.POLYGON,
   ) {
     try {
       const chainKey = chainId ? chainId.toString() : 'all';
@@ -62,26 +62,9 @@ export class NftService {
         return JSON.parse(cachedNFTs);
       }
 
-      let nfts: any[] = [];
+      const nfts = await this.fetchNFTsForChain(walletAddress, chainId);
 
-      if (chainId) {
-        nfts = await this.fetchNFTsForChain(walletAddress, chainId);
-      } else {
-        const mainnetNetworks = this.networkService.getMainnetNetworks();
-        const nftPromises = mainnetNetworks.map(network =>
-          this.fetchNFTsForChain(walletAddress, network.chainId || 1),
-        );
-
-        const results = await Promise.allSettled(nftPromises);
-
-        nfts = results.reduce((acc, result, index) => {
-          if (result.status === 'fulfilled') {
-            return [...acc, ...result.value];
-          }
-          this.logger.warn(`Failed to fetch NFTs from ${mainnetNetworks[index].name}`);
-          return acc;
-        }, []);
-      }
+      console.log('nfts', nfts);
 
       const total = nfts.length;
       const paginatedNFTs = nfts.slice(offset, offset + limit);
@@ -136,6 +119,8 @@ export class NftService {
     try {
       const transactions = await this.networkService.fetchNFTTransactions(walletAddress, chainId);
 
+      console.log('transactions', transactions);
+
       if (!transactions.length) {
         this.logger.log(`No NFT transactions found for ${walletAddress} on ${networkConfig.name}`);
         return [];
@@ -159,21 +144,27 @@ export class NftService {
     for (const tx of transactions.reverse()) {
       const key = `${tx.contractAddress}-${tx.tokenID}-${chainId}`;
 
+      console.log('tx', tx);
+
       if (tx.to && tx.to.toLowerCase() === walletAddress.toLowerCase()) {
         try {
-          const isOwner = await this.verifyNFTOwnership(
-            walletAddress,
-            tx.contractAddress,
-            tx.tokenID,
-            chainId,
-          );
+          const requiresDeepChecks = tx.source === 'scan';
+          const isOwner = requiresDeepChecks
+            ? await this.verifyNFTOwnership(walletAddress, tx.contractAddress, tx.tokenID, chainId)
+            : true;
 
           if (isOwner && !uniqueTokens.has(key)) {
-            const metadata = await this.metadataService.getMetadata(
-              tx.contractAddress,
-              tx.tokenID,
-              chainId,
-            );
+            let metadata = tx.metadata;
+
+            console.log('requiresMetadataFetch', requiresDeepChecks, metadata);
+
+            if (requiresDeepChecks) {
+              metadata = await this.metadataService.getMetadata(
+                tx.contractAddress,
+                tx.tokenID,
+                chainId,
+              );
+            }
             uniqueTokens.set(key, {
               contractAddress: tx.contractAddress,
               tokenId: tx.tokenID,
@@ -182,6 +173,7 @@ export class NftService {
               tokenName: tx.tokenName || `NFT ${tx.tokenID}`,
               chainId: chainId,
               networkName: networkConfig.name,
+              source: tx.source,
             });
           }
         } catch (error: any) {
@@ -292,12 +284,17 @@ export class NftService {
       const provider = this.networkService.getProvider(chainId);
       const contract = new ethers.Contract(contractAddress, this.NFT_ABI, provider);
 
+      console.log('verifyOwner', walletAddress, contractAddress, tokenId, chainId);
+
       try {
         const owner = await contract.ownerOf(tokenId);
+
+        console.log('contract.ownerOf', owner);
         return owner.toLowerCase() === walletAddress.toLowerCase();
       } catch {
         try {
           const balance = await contract.balanceOf(walletAddress, tokenId);
+          console.log('contract.balanceOf', balance);
           return balance.gt(0);
         } catch (innerError: any) {
           this.logger.error(`Error verifying NFT ownership on ${chainId}:`, innerError);

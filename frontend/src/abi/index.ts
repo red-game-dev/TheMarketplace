@@ -20,6 +20,16 @@ export const ERC721_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  {
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'operator', type: 'address' },
+    ],
+    name: 'isApprovedForAll',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
 export const ERC1155_ABI = [
@@ -44,6 +54,16 @@ export const ERC1155_ABI = [
     name: 'setApprovalForAll',
     outputs: [],
     stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'operator', type: 'address' },
+    ],
+    name: 'isApprovedForAll',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
     type: 'function',
   },
 ];

@@ -61,6 +61,7 @@ export interface NFT {
   chainId: ChainId;
   tokenType: 'ERC721' | 'ERC1155';
   metadata: NFTMetadata;
+  source: string;
 }
 
 export interface TransactionStatus {

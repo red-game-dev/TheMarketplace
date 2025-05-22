@@ -25,9 +25,6 @@ export enum ChainId {
   BASE_SEPOLIA = 84532,
   POLYGON_AMOY = 80002, // New Polygon testnet
   AVALANCHE_FUJI = 43113,
-  BINANCE_TESTNET = 97,
-  SOLANA_DEVNET = 999998, // Using high number as Solana doesn't use EVM chain ID
-  SOLANA_TESTNET = 999997, // Using high number as Solana doesn't use EVM chain ID
 }
 
 export interface NetworkConfig {
@@ -47,6 +44,27 @@ export interface NetworkConfig {
 }
 
 export type NetWorkConfigList = Record<ChainId, Partial<NetworkConfig>>;
+
+export const ALCHEMY_NETWORKS: Record<ChainId, string> = {
+  [ChainId.ETHEREUM]: 'eth-mainnet',
+  [ChainId.POLYGON]: 'polygon-mainnet',
+  [ChainId.ARBITRUM]: 'arb-mainnet',
+  [ChainId.OPTIMISM]: 'opt-mainnet',
+  [ChainId.BASE]: 'base-mainnet',
+  [ChainId.SEPOLIA]: 'eth-sepolia',
+  [ChainId.POLYGON_AMOY]: 'polygon-amoy',
+  [ChainId.ARBITRUM_SEPOLIA]: 'arb-sepolia',
+  [ChainId.OPTIMISM_SEPOLIA]: 'opt-sepolia',
+  [ChainId.BASE_SEPOLIA]: 'base-sepolia',
+
+  // Not supported by Alchemy
+  [ChainId.SOLANA]: '',
+  [ChainId.AVALANCHE]: 'undfined',
+  [ChainId.BINANCE]: '',
+  [ChainId.CRONOS]: '',
+  [ChainId.HARMONY]: '',
+  [ChainId.AVALANCHE_FUJI]: '',
+};
 
 export const getNetworkConfigs = (configService: ConfigService): NetWorkConfigList => {
   return {
@@ -305,54 +323,6 @@ export const getNetworkConfigs = (configService: ConfigService): NetWorkConfigLi
       blockExplorer: 'https://testnet.snowtrace.io',
       logoUrl: '/networks/avalanche-testnet.svg',
       isEVM: true,
-    },
-    [ChainId.BINANCE_TESTNET]: {
-      name: 'BNB Testnet',
-      chainId: ChainId.BINANCE_TESTNET,
-      type: NetworkType.TESTNET,
-      rpcUrl: configService.get<string>(
-        'BINANCE_TESTNET_RPC_URL',
-        'https://data-seed-prebsc-1-s1.binance.org:8545',
-      ),
-      scanUrl: 'https://api-testnet.bscscan.com',
-      scanApiKey: configService.get<string>('BINANCE_SCAN_API_KEY', ''),
-      scanApiEndpoint: 'https://api-testnet.bscscan.com/api',
-      nftApiPath: 'account/tokennfttx',
-      currency: 'BNB',
-      decimals: 18,
-      blockExplorer: 'https://testnet.bscscan.com',
-      logoUrl: '/networks/binance-testnet.svg',
-      isEVM: true,
-    },
-    [ChainId.SOLANA_DEVNET]: {
-      name: 'Solana Devnet',
-      chainId: ChainId.SOLANA_DEVNET,
-      type: NetworkType.TESTNET,
-      rpcUrl: configService.get<string>('SOLANA_DEVNET_RPC_URL', 'https://api.devnet.solana.com'),
-      scanUrl: '',
-      scanApiKey: '',
-      scanApiEndpoint: '',
-      nftApiPath: '',
-      currency: 'SOL',
-      decimals: 9,
-      blockExplorer: 'https://explorer.solana.com/?cluster=devnet',
-      logoUrl: '/networks/solana-testnet.svg',
-      isEVM: false,
-    },
-    [ChainId.SOLANA_TESTNET]: {
-      name: 'Solana Testnet',
-      chainId: ChainId.SOLANA_TESTNET,
-      type: NetworkType.TESTNET,
-      rpcUrl: configService.get<string>('SOLANA_TESTNET_RPC_URL', 'https://api.testnet.solana.com'),
-      scanUrl: '',
-      scanApiKey: '',
-      scanApiEndpoint: '',
-      nftApiPath: '',
-      currency: 'SOL',
-      decimals: 9,
-      blockExplorer: 'https://explorer.solana.com/?cluster=testnet',
-      logoUrl: '/networks/solana-testnet.svg',
-      isEVM: false,
     },
   };
 };

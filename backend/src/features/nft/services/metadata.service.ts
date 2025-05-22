@@ -15,9 +15,15 @@ export class NFTMetadataService {
   private readonly NFT_ABI = [
     // ERC721
     'function tokenURI(uint256 tokenId) view returns (string)',
-    'function uri(uint256 tokenId) view returns (string)', // ERC1155
-    'function balanceOf(address owner, uint256 id) view returns (uint256)', // ERC1155
-    'function balanceOf(address owner) view returns (uint256)', // ERC721
+    'function balanceOf(address owner) view returns (uint256)',
+    'function ownerOf(uint256 tokenId) view returns (address)',
+    'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
+
+    // ERC1155
+    'function uri(uint256 tokenId) view returns (string)',
+    'function balanceOf(address account, uint256 id) view returns (uint256)',
+
+    // Metadata
     'function name() view returns (string)',
     'function symbol() view returns (string)',
   ];
