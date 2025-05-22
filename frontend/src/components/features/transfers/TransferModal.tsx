@@ -38,8 +38,6 @@ export const TransferModal = memo(function TransferModal({
   const transferStatusType = useAppStore().use.transferStatusType();
   const { resetTransfer } = useAppStore().getState();
 
-  console.log('activeTransfer', activeTransfer);
-
   useEffect(() => {
     if (!isOpen) {
       resetTransfer();

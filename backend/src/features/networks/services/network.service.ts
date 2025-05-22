@@ -85,12 +85,9 @@ export class NetworkService {
     // If Alchemy is supported, use it
     const alchemyUrl = this.getAlchemyEndpoint(chainId);
 
-    console.log('alchemyUrl', alchemyUrl);
-
     if (alchemyUrl) {
       try {
         const url = `${alchemyUrl}/getNFTsForOwner?withMetadata=true&owner=${walletAddress}&order=asc&category=erc721,erc1155`;
-        console.log('url', url);
         const response = await fetch(url, {
           headers: { Accept: 'application/json' },
         });
