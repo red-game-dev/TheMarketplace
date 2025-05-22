@@ -81,6 +81,8 @@ export class NetworkService {
         apikey: network.scanApiKey || '',
       });
 
+      console.log('network', network, params);
+
       const url = `${network.scanApiEndpoint}?${params.toString()}`;
 
       this.logger.log(`Fetching NFT transactions from ${network.name} for ${walletAddress}`);
@@ -89,6 +91,8 @@ export class NetworkService {
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
+
+      console.log('url', url, chainId, walletAddress);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
